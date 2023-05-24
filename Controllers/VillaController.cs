@@ -1,21 +1,25 @@
-﻿using MagicVilla.Models;
+﻿using AutoMapper;
+using MagicVilla.Models;
 using MagicVilla.Models.Dto;
-using MagicVilla.Services;
+using MagicVilla.Reposiory.IRepository;
 using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc;
 
 namespace MagicVilla.Controllers
 {
+    // Continuar video desde 3:03:00
     [Route("api/[controller]")]
     [ApiController]
     public class VillaController : ControllerBase
     {
         private readonly ILogger<VillaController> _logger;
-        private readonly VillasServices _villasServices;
-        public VillaController(ILogger<VillaController> logger, VillasServices villasServices)
+        private readonly IMapper _mapper;
+        private readonly IVillaRepository _villaRepository;
+        public VillaController(ILogger<VillaController> logger,  IMapper mapper, IVillaRepository villaRepo)
         {
             _logger = logger;
-            _villasServices = villasServices;
+            _mapper = mapper;
+            _villaRepository = villaRepo;
         }
 
 
@@ -23,7 +27,8 @@ namespace MagicVilla.Controllers
         [HttpGet]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public async Task<ActionResult<IEnumerable<VillaDto>>> GetVillas() {
-            return Ok(await _villasServices.GetVillas()); 
+            var villas = await _villaRepository.GetAll();
+            return Ok(_mapper.Map<IEnumerable<VillaDto>>(villas)); 
         }
 
         [HttpGet("id:int", Name = "GetVillaById")]
@@ -34,7 +39,7 @@ namespace MagicVilla.Controllers
         {
             if (id == 0 || id.GetType() != typeof(int)) return BadRequest();
 
-            var villa = await _villasServices.GetVillaById(id);
+            var villa = await _villaRepository.Get(v => v.Id == id);
             if (villa == null) return NotFound("Villa no encontrada");
 
             return Ok(villa);
@@ -49,12 +54,14 @@ namespace MagicVilla.Controllers
             if (villa == null) return BadRequest();
             if (!ModelState.IsValid) return BadRequest(ModelState);
 
-            var existVilla = await _villasServices.GetVillaByName(villa.Name);
+            var existVilla = await _villaRepository.Get(v=>v.Name.ToLower() == villa.Name.ToLower());
             if (existVilla != null) return BadRequest("Ya existe una villa con ese nombre");
+            var newVilla = _mapper.Map<Villa>(villa);
+            newVilla.CreateAt = DateTime.Now;
+            
+            await _villaRepository.Create(newVilla);
 
-            int id = await _villasServices.CreateVilla(villa);
-
-            return CreatedAtRoute("GetVillaById", new { id }, villa);
+            return CreatedAtRoute("GetVillaById", new { newVilla.Id }, villa);
 
         }
 
@@ -65,10 +72,12 @@ namespace MagicVilla.Controllers
         public async Task<IActionResult> DeleteVillaById(int id)
         {
             if (id == 0 || id.GetType() != typeof(int)) return BadRequest("Es necesario pasar un id");
-            var villa = await _villasServices.GetVillaById(id);
+            var villa =  await _villaRepository.Get(v => v.Id == id);
             if (villa == null) return NotFound("Villa no encontrada");
+            var deleteVilla = _mapper.Map<Villa>(villa);
+            deleteVilla.Id = id;
 
-            await _villasServices.DeleteVilla(villa);
+            await _villaRepository.Delete(deleteVilla);
             return NoContent();
         }
 
@@ -81,10 +90,11 @@ namespace MagicVilla.Controllers
             if (id == 0 || id.GetType() != typeof(int)) return BadRequest("Es necesario pasar un id");
             if (villa == null) return BadRequest();
 
-            var existVilla = await _villasServices.GetVillaById(id);
+            var existVilla = await _villaRepository.Get(v => v.Id == id);
             if (existVilla == null) return NotFound("Villa no encontrada");
-
-            await _villasServices.UpdateVilla(existVilla.Id, villa);
+            var newVilla = _mapper.Map<Villa>(villa);
+            newVilla.Id = id;
+            await _villaRepository.Update(newVilla);
             return NoContent();
         }
 
@@ -95,15 +105,13 @@ namespace MagicVilla.Controllers
         public async Task<IActionResult> PatchVilla(int id, JsonPatchDocument<Villa> patch)
         {
             if (patch == null) return BadRequest();
+            var villa = await _villaRepository.Get(v => v.Id == id);
+            if (villa == null) return BadRequest("Villa no encontrada");
 
-            var villa = await _villasServices.GetVillaById(id);
-            if (villa == null) return BadRequest();
-
-            var model = _villasServices.RetVilla(villa);
-            patch.ApplyTo(model, ModelState);
-          
+            patch.ApplyTo(villa, ModelState);
+            
             if (!ModelState.IsValid) return BadRequest(ModelState);
-            await _villasServices.UpdateVilla(model);
+            await _villaRepository.Update(villa);
 
             return NoContent();
         }

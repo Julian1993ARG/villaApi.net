@@ -8,7 +8,7 @@ namespace MagicVilla.Reposiory.IRepository
         Task Create(T entidad);
         Task Delete(T entidad);
         Task<List<T>> GetAll(Expression<Func<T, bool>>? filter = null);
-        Task<T?> Get(Expression<Func<T, bool>> filter = null, bool tracked=true);
+        Task<T?> Get(Expression<Func<T, bool>> filter = null, bool tracked=true, params Expression<Func<T, object>>[] includes);
 
     }
 }
